@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/recent_item.dart';
 import '../repositories/history_repository.dart';
 import '../utils/url_normalizer.dart';
+import 'webview_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -53,10 +54,11 @@ class _HomePageState extends State<HomePage> {
       await _historyRepository.addRecentItem(normalizedUrl);
       await _loadRecentItems();
 
-      // TODO: Navigate to WebView page
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đang mở: $normalizedUrl')),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => WebViewPage(url: normalizedUrl),
+          ),
         );
       }
     } catch (e) {
@@ -75,10 +77,11 @@ class _HomePageState extends State<HomePage> {
     await _historyRepository.addRecentItem(baseUrl);
     await _loadRecentItems();
 
-    // TODO: Navigate to WebView page
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đang mở: $baseUrl')),
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => WebViewPage(url: baseUrl),
+        ),
       );
     }
   }
