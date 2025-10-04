@@ -34,6 +34,9 @@ class _WebViewPageState extends State<WebViewPage> {
                 allowsInlineMediaPlayback: true,
                 iframeAllow: 'camera; microphone; geolocation',
                 iframeAllowFullscreen: true,
+                // iOS-specific settings for camera/media
+                allowsPictureInPictureMediaPlayback: true,
+                allowsAirPlayForMediaPlayback: true,
               ),
               onWebViewCreated: (controller) {
                 _webViewController = controller;
