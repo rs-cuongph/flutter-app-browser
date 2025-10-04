@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/history_provider.dart';
 import '../utils/url_normalizer.dart';
-import 'webview_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -35,11 +35,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       await ref.read(historyProvider.notifier).addItem(normalizedUrl);
 
       if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => WebViewPage(url: normalizedUrl),
-          ),
-        );
+        final encodedUrl = Uri.encodeComponent(normalizedUrl);
+        context.go('/webview/$encodedUrl');
       }
     } catch (e) {
       if (mounted) {
@@ -57,11 +54,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     await ref.read(historyProvider.notifier).addItem(baseUrl);
 
     if (mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => WebViewPage(url: baseUrl),
-        ),
-      );
+      final encodedUrl = Uri.encodeComponent(baseUrl);
+      context.go('/webview/$encodedUrl');
     }
   }
 
