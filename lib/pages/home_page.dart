@@ -1,43 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../models/recent_item.dart';
-import '../repositories/history_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/history_provider.dart';
 import '../utils/url_normalizer.dart';
 import 'webview_page.dart';
 
-class HomePage extends StatefulWidget {
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends ConsumerState<HomePage> {
   final TextEditingController _urlController = TextEditingController();
-  late HistoryRepository _historyRepository;
-  List<RecentItem> _recentItems = [];
   bool _isUrlValid = false;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initRepository();
     _urlController.addListener(_validateUrl);
-  }
-
-  Future<void> _initRepository() async {
-    final prefs = await SharedPreferences.getInstance();
-    _historyRepository = HistoryRepository(prefs);
-    await _loadRecentItems();
-  }
-
-  Future<void> _loadRecentItems() async {
-    final items = await _historyRepository.getRecentItems();
-    setState(() {
-      _recentItems = items;
-      _isLoading = false;
-    });
   }
 
   void _validateUrl() {
@@ -51,8 +32,7 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final normalizedUrl = UrlNormalizer.normalize(_urlController.text);
-      await _historyRepository.addRecentItem(normalizedUrl);
-      await _loadRecentItems();
+      await ref.read(historyProvider.notifier).addItem(normalizedUrl);
 
       if (mounted) {
         Navigator.of(context).push(
@@ -74,8 +54,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openRecentItem(String baseUrl) async {
-    await _historyRepository.addRecentItem(baseUrl);
-    await _loadRecentItems();
+    await ref.read(historyProvider.notifier).addItem(baseUrl);
 
     if (mounted) {
       Navigator.of(context).push(
@@ -94,6 +73,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final historyState = ref.watch(historyProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simple WebView'),
@@ -130,9 +111,9 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _isLoading
+              child: historyState.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _recentItems.isEmpty
+                  : historyState.items.isEmpty
                       ? const Center(
                           child: Text(
                             'Chưa có trang gần đây',
@@ -143,9 +124,9 @@ class _HomePageState extends State<HomePage> {
                           ),
                         )
                       : ListView.builder(
-                          itemCount: _recentItems.length,
+                          itemCount: historyState.items.length,
                           itemBuilder: (context, index) {
-                            final item = _recentItems[index];
+                            final item = historyState.items[index];
                             return Card(
                               child: ListTile(
                                 leading: const Icon(Icons.public),
@@ -156,10 +137,9 @@ class _HomePageState extends State<HomePage> {
                                 ),
                                 trailing: IconButton(
                                   icon: const Icon(Icons.close),
-                                  onPressed: () async {
-                                    await _historyRepository.removeItem(item.baseUrl);
-                                    await _loadRecentItems();
-                                  },
+                                  onPressed: () => ref
+                                      .read(historyProvider.notifier)
+                                      .removeItem(item.baseUrl),
                                 ),
                                 onTap: () => _openRecentItem(item.baseUrl),
                               ),
