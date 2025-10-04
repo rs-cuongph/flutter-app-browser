@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../managers/script_manager.dart';
+import '../models/script_definition.dart';
 
 enum WebViewErrorType {
   invalidUrl,
@@ -29,11 +31,112 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _isLoading = false;
   Timer? _loadingTimer;
   static const int _timeoutSeconds = 30;
+  final ScriptManager _scriptManager = ScriptManager();
 
   @override
   void initState() {
     super.initState();
     _validateAndLoadUrl();
+    _initializeScripts();
+  }
+
+  void _initializeScripts() {
+    // Đăng ký các script mẫu
+    // _scriptManager.registerScripts([
+    //   ScriptDefinition(
+    //     id: 'show_alert',
+    //     name: 'Hiển thị thông báo',
+    //     description: 'Hiển thị alert với nội dung tùy chỉnh',
+    //     script: '''
+    //       if (params.message) {
+    //         alert(params.message);
+    //         return { success: true, message: 'Alert đã được hiển thị' };
+    //       } else {
+    //         return { success: false, message: 'Thiếu tham số message' };
+    //       }
+    //     ''',
+    //     parameters: ['message'],
+    //     returnType: 'object',
+    //   ),
+    //   ScriptDefinition(
+    //     id: 'get_page_info',
+    //     name: 'Lấy thông tin trang',
+    //     description: 'Lấy thông tin cơ bản về trang web hiện tại',
+    //     script: '''
+    //       return {
+    //         title: document.title,
+    //         url: window.location.href,
+    //         domain: window.location.hostname,
+    //         userAgent: navigator.userAgent,
+    //         timestamp: new Date().toISOString()
+    //       };
+    //     ''',
+    //     returnType: 'object',
+    //   ),
+    //   ScriptDefinition(
+    //     id: 'scroll_to_top',
+    //     name: 'Cuộn lên đầu trang',
+    //     description: 'Cuộn trang web lên đầu trang',
+    //     script: '''
+    //       window.scrollTo({ top: 0, behavior: 'smooth' });
+    //       return { success: true, message: 'Đã cuộn lên đầu trang' };
+    //     ''',
+    //     returnType: 'object',
+    //   ),
+    //   ScriptDefinition(
+    //     id: 'highlight_elements',
+    //     name: 'Highlight elements',
+    //     description: 'Highlight các elements theo selector',
+    //     script: '''
+    //       if (params.selector) {
+    //         const elements = document.querySelectorAll(params.selector);
+    //         elements.forEach(el => {
+    //           el.style.backgroundColor = params.color || 'yellow';
+    //           el.style.border = '2px solid red';
+    //         });
+    //         return {
+    //           success: true,
+    //           message: `Đã highlight ${elements.length} elements`,
+    //           count: elements.length
+    //         };
+    //       } else {
+    //         return { success: false, message: 'Thiếu tham số selector' };
+    //       }
+    //     ''',
+    //     parameters: ['selector', 'color'],
+    //     returnType: 'object',
+    //   ),
+    //   ScriptDefinition(
+    //     id: 'get_form_data',
+    //     name: 'Lấy dữ liệu form',
+    //     description: 'Lấy dữ liệu từ tất cả form trên trang',
+    //     script: '''
+    //       const forms = document.querySelectorAll('form');
+    //       const formData = [];
+
+    //       forms.forEach((form, index) => {
+    //         const data = new FormData(form);
+    //         const formObj = {};
+    //         for (let [key, value] of data.entries()) {
+    //           formObj[key] = value;
+    //         }
+    //         formData.push({
+    //           index: index,
+    //           action: form.action,
+    //           method: form.method,
+    //           data: formObj
+    //         });
+    //       });
+
+    //       return {
+    //         success: true,
+    //         forms: formData,
+    //         count: formData.length
+    //       };
+    //     ''',
+    //     returnType: 'object',
+    //   ),
+    // ]);
   }
 
   @override
@@ -153,6 +256,40 @@ class _WebViewPageState extends State<WebViewPage> {
               ),
               onWebViewCreated: (controller) {
                 _webViewController = controller;
+                _scriptManager.setWebViewController(controller);
+
+                // Thiết lập JavaScript handlers
+                controller.addJavaScriptHandler(
+                  handlerName: 'executeScript',
+                  callback: (args) async {
+                    try {
+                      final scriptId = args[0]['scriptId'] as String;
+                      final parameters =
+                          args[0]['parameters'] as Map<String, dynamic>?;
+                      final result = await _scriptManager
+                          .executeScript(scriptId, parameters: parameters);
+                      return result;
+                    } catch (e) {
+                      return {'success': false, 'error': e.toString()};
+                    }
+                  },
+                );
+
+                controller.addJavaScriptHandler(
+                  handlerName: 'executeRawScript',
+                  callback: (args) async {
+                    try {
+                      final script = args[0]['script'] as String;
+                      final parameters =
+                          args[0]['parameters'] as Map<String, dynamic>?;
+                      final result = await _scriptManager
+                          .executeRawScript(script, parameters: parameters);
+                      return result;
+                    } catch (e) {
+                      return {'success': false, 'error': e.toString()};
+                    }
+                  },
+                );
               },
               onLoadStart: (controller, url) {
                 setState(() {
@@ -173,6 +310,8 @@ class _WebViewPageState extends State<WebViewPage> {
                   _progress = 1;
                   _isLoading = false;
                 });
+                // Inject JavaScript bridge sau khi trang load xong
+                _scriptManager.injectJavaScriptBridge();
               },
               onReceivedError: (controller, request, error) {
                 _cancelLoadingTimer();
@@ -180,7 +319,8 @@ class _WebViewPageState extends State<WebViewPage> {
                 setState(() {
                   _hasError = true;
                   _errorType = errorType;
-                  _errorMessage = _getErrorMessage(errorType, error.description);
+                  _errorMessage =
+                      _getErrorMessage(errorType, error.description);
                   _isLoading = false;
                 });
               },
@@ -209,6 +349,11 @@ class _WebViewPageState extends State<WebViewPage> {
               ),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showScriptDemo,
+        tooltip: 'Script Demo',
+        child: const Icon(Icons.code),
       ),
     );
   }
@@ -289,6 +434,174 @@ class _WebViewPageState extends State<WebViewPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showScriptDemo() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Script Demo',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: _scriptManager.getAllScripts().map((script) {
+                    return Card(
+                      child: ListTile(
+                        title: Text(script.name),
+                        subtitle: Text(script.description),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.play_arrow),
+                              onPressed: () => _executeScript(script),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.info),
+                              onPressed: () => _showScriptInfo(script),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _executeScript(ScriptDefinition script) async {
+    try {
+      Map<String, dynamic>? parameters;
+
+      // Nếu script có parameters, hiển thị dialog để nhập
+      if (script.parameters.isNotEmpty) {
+        parameters = await _showParameterDialog(script);
+        if (parameters == null) return; // User cancelled
+      }
+
+      final result =
+          await _scriptManager.executeScript(script.id, parameters: parameters);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Script "${script.name}" đã thực thi thành công'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showParameterDialog(
+      ScriptDefinition script) async {
+    final Map<String, dynamic> parameters = {};
+    final TextEditingController controllers = TextEditingController();
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Tham số cho ${script.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: script.parameters.map((param) {
+            return TextField(
+              decoration: InputDecoration(
+                labelText: param,
+                hintText: 'Nhập giá trị cho $param',
+              ),
+              onChanged: (value) {
+                parameters[param] = value;
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(parameters),
+            child: const Text('Thực thi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showScriptInfo(ScriptDefinition script) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(script.name),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('ID: ${script.id}'),
+              const SizedBox(height: 8),
+              Text('Mô tả: ${script.description}'),
+              const SizedBox(height: 8),
+              Text('Tham số: ${script.parameters.join(', ')}'),
+              const SizedBox(height: 8),
+              Text('Kiểu trả về: ${script.returnType ?? 'Không xác định'}'),
+              const SizedBox(height: 8),
+              Text('Bất đồng bộ: ${script.isAsync ? 'Có' : 'Không'}'),
+              const SizedBox(height: 16),
+              const Text('Code:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  script.script,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Đóng'),
+          ),
+        ],
       ),
     );
   }
